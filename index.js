@@ -90,7 +90,6 @@ function calculateExpiryDate() {
   return expiryDate.toISOString().split('T')[0];
 }
 
-const server = app.listen(port, () => {
-  const address = server.address();
-  console.log(`Server is running at http://${address.address}:${address.port}`);
+app.listen(port, () => {
+  console.log(`Server is running at http://localhost:${port}`);
 });
