@@ -7,7 +7,13 @@ const port = 3000;
 const db = new sqlite3.Database('tokens.db');
 
 // Предопределенные токены
-const predefinedTokens = ['token1', 'token2', 'token3', 'token4', 'token5'];
+const predefinedTokens = [
+  'NSB897sb64cX',
+   'Zcu5o5H4gkJw',
+    '0dSC8p3GYwcB',
+     'xYIBwZ309PL6',
+      '8T36n2wOiSe8'
+    ];
 
 // Создание таблицы tokens, если её нет
 db.run(`
