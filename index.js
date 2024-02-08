@@ -49,6 +49,7 @@ db.run(`
 
 app.use(express.json());
 
+// Login
 app.get('/api/token', (req, res) => {
   const { token, deviceID } = req.query;
 
@@ -80,6 +81,35 @@ app.get('/api/token', (req, res) => {
       // Если deviceID уже занят, возвращаем токен с флагом isValid = true
       console.log(`DeviceID is already in use for token ${token}`);
       return res.json({ Token: token, Expiry: row.expiry, IsValid: true, DeviceId: row.deviceId });
+    }
+  });
+});
+
+// Token status
+app.get('/api/token/status', (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).json({ error: 'Missing token parameter' });
+  }
+
+  if (!predefinedTokens.includes(token)) {
+    return res.status(400).json({ error: 'Invalid token' });
+  }
+
+  db.get('SELECT * FROM tokens WHERE token = ?', [token], (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+
+    if (!row) {
+      return res.status(404).json({ error: 'Token not found' });
+    }
+
+    if (row.deviceId) {
+      return res.json({ Token: token, Status: 'Occupied', DeviceId: row.deviceId });
+    } else {
+      return res.json({ Token: token, Status: 'Free' });
     }
   });
 });
