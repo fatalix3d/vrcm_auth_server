@@ -6,46 +6,50 @@ const port = 3000;
 // Инициализация базы данных
 const db = new sqlite3.Database('tokens.db');
 
-// Предопределенные токены
-const predefinedTokens = [
-  'NSB897sb64cX',
-   'Zcu5o5H4gkJw',
-    '0dSC8p3GYwcB',
-     'xYIBwZ309PL6',
-      '8T36n2wOiSe8'
-    ];
-
+// Создание таблицы tokens, если её нет
 // Создание таблицы tokens, если её нет
 db.run(`
   CREATE TABLE IF NOT EXISTS tokens (
     token TEXT PRIMARY KEY,
     expiry TEXT,
     isValid BOOLEAN,
-    deviceId TEXT
+    deviceId TEXT,
+    maxUsers INT
   )
 `, (err) => {
   if (err) {
     console.error(`Error creating table: ${err}`);
   } else {
     // Инициализация токенов в базе данных
-    predefinedTokens.forEach(token => {
-      db.run('INSERT OR IGNORE INTO tokens (token, expiry, isValid, deviceId) VALUES (?, ?, ?, ?)', [token, calculateExpiryDate(), true, null], (err) => {
-        if (err) {
-          console.error(`Error initializing token ${token}: ${err}`);
-        } else {
-          db.get('SELECT * FROM tokens WHERE token = ?', [token], (err, row) => {
-            if (err) {
-              console.error(`Error fetching token details for logging: ${err}`);
-            } else {
-              console.log(`Token ${token} initialized. Token details:`, row);
-            }
+    db.all('SELECT * FROM tokens', (err, rows) => {
+      if (err) {
+        console.error(`Error initializing tokens: ${err}`);
+      } else {
+        if (rows.length === 0) {
+          // Если база данных пуста, добавляем новые токены
+          const initialTokens = [
+            { token: 'NSB897sb64cX', expiry: calculateExpiryDate(), isValid: true, deviceId: null, maxUsers: 10 },
+            // Другие токены...
+          ];
+
+          initialTokens.forEach(({ token, expiry, isValid, deviceId, maxUsers }) => {
+            db.run('INSERT INTO tokens (token, expiry, isValid, deviceId, maxUsers) VALUES (?, ?, ?, ?, ?)',
+              [token, expiry, isValid, deviceId, maxUsers], (err) => {
+                if (err) {
+                  console.error(`Error initializing token ${token}: ${err}`);
+                } else {
+                  console.log(`Token ${token} initialized.`);
+                }
+              });
           });
+        } else {
+          console.log('Tokens already initialized.');
         }
-      });
+      }
     });
   }
 });
- 
+
 
 app.use(express.json());
 
@@ -57,10 +61,6 @@ app.get('/api/token', (req, res) => {
     return res.status(400).json({ error: 'Missing token or deviceID parameter' });
   }
 
-  if (!predefinedTokens.includes(token)) {
-    return res.status(400).json({ error: 'Invalid token' });
-  }
-
   db.get('SELECT * FROM tokens WHERE token = ?', [token], (err, row) => {
     if (err) {
       return res.status(500).json({ error: 'Internal Server Error' });
@@ -70,17 +70,31 @@ app.get('/api/token', (req, res) => {
     if (!row.deviceId || row.deviceId === deviceID) {
       // Если deviceID свободен или совпадает с переданным, обновляем запись в базе данных
       db.run('UPDATE tokens SET deviceId = ?, isValid = 1 WHERE token = ?', [deviceID, token], (err) => {
+
         if (err) {
           console.error(`Error updating deviceId for token ${token}: ${err}`);
           return res.status(500).json({ error: 'Internal Server Error' });
         }
+
         console.log(`DeviceID ${deviceID} assigned to token ${token}`);
-        return res.json({ Token: token, Expiry: row.expiry, IsValid: true, DeviceId: deviceID });
+        return res.json({ 
+          Token: row.token,
+          Expiry: row.expiry,
+          IsValid: row.isValid,
+          DeviceId: deviceID,
+          MaxUsers: row.maxUsers
+          });
       });
     } else {
-      // Если deviceID уже занят, возвращаем токен с флагом isValid = true
+      // Если deviceID уже занят, возвращаем токен с флагом isValid = false
       console.log(`DeviceID is already in use for token ${token}`);
-      return res.json({ Token: token, Expiry: row.expiry, IsValid: true, DeviceId: row.deviceId });
+      return res.json({ 
+        Token: token,
+        Expiry: row.expiry,
+        IsValid: false,
+        DeviceId: row.deviceId,
+        MaxUsers: row.maxUsers
+      });
     }
   });
 });
@@ -93,10 +107,6 @@ app.get('/api/token/status', (req, res) => {
     return res.status(400).json({ error: 'Missing token parameter' });
   }
 
-  if (!predefinedTokens.includes(token)) {
-    return res.status(400).json({ error: 'Invalid token' });
-  }
-
   db.get('SELECT * FROM tokens WHERE token = ?', [token], (err, row) => {
     if (err) {
       return res.status(500).json({ error: 'Internal Server Error' });
@@ -106,11 +116,51 @@ app.get('/api/token/status', (req, res) => {
       return res.status(404).json({ error: 'Token not found' });
     }
 
-    if (row.deviceId) {
-      return res.json({ Token: token, Status: 'Occupied', DeviceId: row.deviceId });
-    } else {
-      return res.json({ Token: token, Status: 'Free' });
+    return res.json({ 
+      Token: row.token,
+      Expiry: row.expiry,
+      IsValid: row.isValid,
+      DeviceId: row.deviceId,
+      MaxUsers: row.maxUsers
+    });
+    // if (row.deviceId) {
+    //   return res.json({ Token: token, Status: 'Occupied', DeviceId: row.deviceId, MaxUsers : row.maxUsers});
+    // } else {
+    //   return res.json({ Token: token, Status: 'Free', MaxUsers : row.maxUsers });
+    // }
+  });
+});
+
+// Add token
+app.post('/api/token/add', (req, res) => {
+  const { newToken, expiryDate } = req.body;
+
+  if (!newToken || !expiryDate) {
+    return res.status(400).json({ error: 'Missing newToken or expiryDate parameter' });
+  }
+
+  // Проверяем, не существует ли уже такого токена
+  db.get('SELECT * FROM tokens WHERE token = ?', [newToken], (err, row) => {
+    if (err) {
+      console.error(`Error checking existing token ${newToken}: ${err}`);
+      return res.status(500).json({ error: 'Internal Server Error' });
     }
+
+    if (row) {
+      return res.status(400).json({ error: 'Token already exists' });
+    }
+
+    // Добавляем новый токен в базу данных
+    db.run('INSERT INTO tokens (token, expiry, isValid, deviceId) VALUES (?, ?, ?, ?)',
+      [newToken, expiryDate, true, null], (err) => {
+        if (err) {
+          console.error(`Error adding new token ${newToken}: ${err}`);
+          return res.status(500).json({ error: 'Internal Server Error' });
+        }
+
+        console.log(`New token ${newToken} added with expiry date ${expiryDate}`);
+        return res.json({ Token: newToken, Expiry: expiryDate, IsValid: true });
+      });
   });
 });
 
