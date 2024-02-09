@@ -133,13 +133,12 @@ app.get('/api/token/status', (req, res) => {
 
 // Add token
 app.post('/api/token/add', (req, res) => {
-  const { newToken, expiryDate } = req.body;
+  const { newToken, expiryDate, maxUsers } = req.body;
 
-  if (!newToken || !expiryDate) {
-    return res.status(400).json({ error: 'Missing newToken or expiryDate parameter' });
+  if (!newToken || !expiryDate || maxUsers === undefined) {
+    return res.status(400).json({ error: 'Missing newToken, expiryDate, or maxUsers parameter' });
   }
 
-  // Проверяем, не существует ли уже такого токена
   db.get('SELECT * FROM tokens WHERE token = ?', [newToken], (err, row) => {
     if (err) {
       console.error(`Error checking existing token ${newToken}: ${err}`);
@@ -150,16 +149,23 @@ app.post('/api/token/add', (req, res) => {
       return res.status(400).json({ error: 'Token already exists' });
     }
 
-    // Добавляем новый токен в базу данных
-    db.run('INSERT INTO tokens (token, expiry, isValid, deviceId) VALUES (?, ?, ?, ?)',
-      [newToken, expiryDate, true, null], (err) => {
+    // Добавляем новый токен в базу данных с учетом maxUsers
+    db.run('INSERT INTO tokens (token, expiry, isValid, deviceId, maxUsers) VALUES (?, ?, ?, ?, ?)',
+      [newToken, expiryDate, true, null, maxUsers], (err) => {
         if (err) {
           console.error(`Error adding new token ${newToken}: ${err}`);
           return res.status(500).json({ error: 'Internal Server Error' });
         }
 
-        console.log(`New token ${newToken} added with expiry date ${expiryDate}`);
-        return res.json({ Token: newToken, Expiry: expiryDate, IsValid: true });
+        console.log(`New token ${newToken} added with expiry date ${expiryDate} and maxUsers ${maxUsers}`);
+        
+        // Возвращаем maxUsers в ответе
+        return res.json({
+          Token: newToken,
+          Expiry: expiryDate,
+          IsValid: true,
+          MaxUsers: maxUsers,
+        });
       });
   });
 });
