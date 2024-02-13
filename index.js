@@ -170,6 +170,42 @@ app.post('/api/token/add', (req, res) => {
   });
 });
 
+// Update maxUsers for a token
+app.post('/api/token/updateMaxUsers', (req, res) => {
+  const { token, maxUsers } = req.body;
+
+  if (!token || maxUsers === undefined) {
+    return res.status(400).json({ error: 'Missing token or maxUsers parameter' });
+  }
+
+  db.get('SELECT * FROM tokens WHERE token = ?', [token], (err, row) => {
+    if (err) {
+      console.error(`Error checking existing token ${token}: ${err}`);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+
+    if (!row) {
+      return res.status(404).json({ error: 'Token not found' });
+    }
+
+    // Обновляем maxUsers для существующего токена
+    db.run('UPDATE tokens SET maxUsers = ? WHERE token = ?', [maxUsers, token], (err) => {
+      if (err) {
+        console.error(`Error updating maxUsers for token ${token}: ${err}`);
+        return res.status(500).json({ error: 'Internal Server Error' });
+      }
+
+      console.log(`MaxUsers for token ${token} updated to ${maxUsers}`);
+      
+      // Возвращаем обновленный maxUsers в ответе
+      return res.json({
+        Token: token,
+        MaxUsers: maxUsers,
+      });
+    });
+  });
+});
+
 function calculateExpiryDate() {
   const expiryDate = new Date();
   expiryDate.setFullYear(expiryDate.getFullYear() + 5);
