@@ -7,7 +7,6 @@ const port = 3000;
 const db = new sqlite3.Database('tokens.db');
 
 // Создание таблицы tokens, если её нет
-// Создание таблицы tokens, если её нет
 db.run(`
   CREATE TABLE IF NOT EXISTS tokens (
     token TEXT PRIMARY KEY,
@@ -206,6 +205,48 @@ app.post('/api/token/updateMaxUsers', (req, res) => {
   });
 });
 
+// Update all parameters for a token
+app.post('/api/token/updateAll', (req, res) => {
+  const { token, expiryDate, isValid, deviceId, maxUsers } = req.body;
+
+  if (!token || !expiryDate || isValid === undefined || maxUsers === undefined) {
+    return res.status(400).json({ error: 'Missing token, expiryDate, isValid, or maxUsers parameter' });
+  }
+
+  db.get('SELECT * FROM tokens WHERE token = ?', [token], (err, row) => {
+    if (err) {
+      console.error(`Error checking existing token ${token}: ${err}`);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+
+    if (!row) {
+      return res.status(404).json({ error: 'Token not found' });
+    }
+
+    // Обновляем все параметры для существующего токена
+    db.run('UPDATE tokens SET expiry = ?, isValid = ?, deviceId = ?, maxUsers = ? WHERE token = ?',
+      [expiryDate, isValid, deviceId, maxUsers, token], (err) => {
+        if (err) {
+          console.error(`Error updating parameters for token ${token}: ${err}`);
+          return res.status(500).json({ error: 'Internal Server Error' });
+        }
+
+        console.log(`Parameters for token ${token} updated`);
+        
+        // Возвращаем обновленные параметры в ответе
+        return res.json({
+          Token: token,
+          Expiry: expiryDate,
+          IsValid: isValid,
+          DeviceId: deviceId,
+          MaxUsers: maxUsers,
+        });
+      });
+  });
+});
+
+
+// Год, месяц, день
 function calculateExpiryDate() {
   const expiryDate = new Date();
   expiryDate.setFullYear(expiryDate.getFullYear() + 5);
